@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blender Gradient Math Visualizer (Full Version)</title>
+    <style>
+        body {
+            background-color: #2b2b2b;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h2 { margin-bottom: 10px; font-weight: normal; color: #ffffff; }
+        .controls {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            background: #3d3d3d;
+            padding: 5px;
+            border-radius: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 800px;
+        }
+        button {
+            background-color: #545454;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #6b6b6b; }
+        button.active { background-color: #4772b3; font-weight: bold; }
+        
+        .container {
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            background-color: #111;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            border: 1px solid #444;
+        }
+
+        .desc {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+            max-width: 300px;
+            text-align: center;
+            height: 60px;
+        }
+        
+        .math-label {
+            font-family: monospace;
+            color: #ffcc00;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Blender 渐变节点原理 (全 7 种类型)</h2>
+
+    <div class="controls">
+        <button onclick="setMode('linear')" id="btn-linear" class="active">Linear (线性)</button>
+        <button onclick="setMode('quadratic')" id="btn-quadratic">Quadratic (二次)</button>
+        <button onclick="setMode('easing')" id="btn-easing">Easing (缓动)</button>
+        <button onclick="setMode('diagonal')" id="btn-diagonal">Diagonal (对角)</button>
+        <button onclick="setMode('spherical')" id="btn-spherical">Spherical (球形)</button>
+        <button onclick="setMode('quadSphere')" id="btn-quadSphere">Quad Sphere (二次球)</button>
+        <button onclick="setMode('radial')" id="btn-radial">Radial (放射)</button>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <div class="math-label">纹理预览 (Texture Output)</div>
+            <canvas id="textureCanvas" width="300" height="300"></canvas>
+            <div class="desc" id="texDesc">加载中...</div>
+        </div>
+
+        <div class="panel">
+            <div class="math-label">数学函数图 (Math Function)</div>
+            <canvas id="graphCanvas" width="300" height="300"></canvas>
+            <div class="desc" id="graphDesc">X轴输入 -> Y轴输出亮度</div>
+        </div>
+    </div>
+
+    <script>
+        const texCanvas = document.getElementById('textureCanvas');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const ctxTex = texCanvas.getContext('2d');
+        const ctxGraph = graphCanvas.getContext('2d');
+        const width = 300;
+        const height = 300;
+
+        let currentMode = 'linear';
+        
+        // --- 核心数学逻辑定义 ---
+        const mathFunctions = {
+            linear: {
+                func: (u, v) => u, 
+                desc: "【最基础】输入=输出。灰度均匀变化，没有倾向性。",
+                formula: "y = x",
+                type: "1D" 
+            },
+            quadratic: {
+                func: (u, v) => u * u,
+                desc: "【压暗部】也就是 y=x²。暗部区域被拉长，适合做光照衰减。",
+                formula: "y = x²",
+                type: "1D"
+            },
+            easing: {
+                func: (u, v) => u * u * (3 - 2 * u), 
+                desc: "【去硬边】S型曲线(Smoothstep)。两头慢中间快，过渡最柔和。",
+                formula: "y = 3x² - 2x³",
+                type: "1D"
+            },
+            diagonal: {
+                func: (u, v) => (u + v) / 2, 
+                desc: "【混合轴】X轴和Y轴的平均值。切面呈45度角。",
+                formula: "z = (x + y) / 2",
+                type: "Diagonal"
+            },
+            spherical: {
+                func: (u, v) => {
+                    let dx = u - 0.5; let dy = v - 0.5;
+                    let dist = Math.sqrt(dx*dx + dy*dy) * 2; 
+                    return Math.max(0, 1 - dist); 
+                },
+                desc: "【基于距离】中心白，边缘黑。像一个倒扣的圆锥体。",
+                formula: "y = 1 - distance",
+                type: "2D"
+            },
+            quadSphere: {
+                func: (u, v) => {
+                    let dx = u - 0.5; let dy = v - 0.5;
+                    let dist = Math.sqrt(dx*dx + dy*dy) * 2; 
+                    let val = Math.max(0, 1 - dist);
+                    return val * val; // 唯一的区别：结果做了平方
+                },
+                desc: "【球形加强版】比普通球形衰减更快，光斑更集中，过渡更平滑。",
+                formula: "y = (1 - distance)²",
+                type: "2D"
+            },
+            radial: {
+                func: (u, v) => {
+                    let dx = u - 0.5; let dy = v - 0.5;
+                    let angle = Math.atan2(dy, dx); 
+                    return (angle + Math.PI) / (2 * Math.PI);
+                },
+                desc: "【基于角度】围绕Z轴旋转扫描。常用于制作CD纹理或环形进度。",
+                formula: "y = angle / 2π",
+                type: "Radial"
+            }
+        };
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            document.getElementById('texDesc').innerText = mathFunctions[mode].desc;
+            document.getElementById('graphDesc').innerText = "公式: " + mathFunctions[mode].formula;
+        }
+
+        function draw() {
+            ctxTex.clearRect(0, 0, width, height);
+            ctxGraph.clearRect(0, 0, width, height);
+            drawGrid(ctxGraph);
+
+            const modeData = mathFunctions[currentMode];
+            const time = (Date.now() / 2500) % 1; 
+
+            // --- 1. 绘制纹理 ---
+            const imgData = ctxTex.createImageData(width, height);
+            const data = imgData.data;
+
+            for (let py = 0; py < height; py++) {
+                for (let px = 0; px < width; px++) {
+                    // Blender UV 坐标系：左下角(0,0)
+                    let u = px / width;
+                    let v = 1 - (py / height); 
+                    
+                    let val = modeData.func(u, v);
+                    val = Math.max(0, Math.min(1, val)); 
+
+                    let color = val * 255;
+                    let idx = (py * width + px) * 4;
+                    data[idx] = color; data[idx+1] = color; data[idx+2] = color; data[idx+3] = 255;
+                }
+            }
+            ctxTex.putImageData(imgData, 0, 0);
+
+            // --- 2. 绘制右侧数学图 ---
+            ctxGraph.beginPath();
+            ctxGraph.strokeStyle = "#4772b3";
+            ctxGraph.lineWidth = 3;
+
+            for (let px = 0; px < width; px++) {
+                let u = px / width;
+                let val;
+
+                // 根据不同类型决定右侧图表显示什么“切面”
+                if (modeData.type === "1D") {
+                    val = modeData.func(u, 0);
+                } else if (modeData.type === "Diagonal") {
+                    // 对角线模式，显示沿对角线(0,0 -> 1,1)的数值变化
+                    val = modeData.func(u, u); 
+                } else if (modeData.type === "2D") {
+                    val = modeData.func(u, 0.5); // 中心切面
+                } else if (modeData.type === "Radial") {
+                    val = u; // 角度线性展示
+                }
+
+                let py = (1 - val) * height;
+                if (px === 0) ctxGraph.moveTo(px, py);
+                else ctxGraph.lineTo(px, py);
+            }
+            ctxGraph.stroke();
+
+            // --- 3. 动画扫描系统 ---
+            let scanU = time;
+            let scanX = time * width; 
+            
+            // 计算扫描点的数值
+            let pointVal;
+            if (modeData.type === "Diagonal") {
+                pointVal = modeData.func(scanU, scanU);
+            } else if (modeData.type === "2D") {
+                pointVal = modeData.func(scanU, 0.5);
+            } else if (modeData.type === "Radial") {
+                pointVal = scanU;
+            } else {
+                pointVal = modeData.func(scanU, 0);
+            }
+            
+            let scanY = (1 - pointVal) * height;
+
+            // 绘制右侧红球
+            ctxGraph.fillStyle = "#ff4444";
+            ctxGraph.beginPath();
+            ctxGraph.arc(scanX, scanY, 6, 0, Math.PI*2);
+            ctxGraph.fill();
+
+            // 绘制左侧指示器
+            ctxTex.strokeStyle = "#ff4444";
+            ctxTex.lineWidth = 2;
+            ctxTex.beginPath();
+
+            if (modeData.type === "1D") {
+                ctxTex.moveTo(scanX, 0); ctxTex.lineTo(scanX, height);
+            } else if (modeData.type === "Diagonal") {
+                // 绘制垂直于对角线的扫描线 (简化示意)
+                // 这里用一个移动的点更清晰
+                let px = scanU * width;
+                let py = (1-scanU) * height; // canvas Y is flipped
+                ctxTex.fillStyle = "#ff4444";
+                ctxTex.arc(px, py, 6, 0, Math.PI*2);
+                ctxTex.fill();
+                // 辅助线
+                ctxTex.strokeStyle = "rgba(255,0,0,0.3)";
+                ctxTex.moveTo(0, height); ctxTex.lineTo(width, 0);
+            } else if (modeData.type === "2D") {
+                ctxTex.fillStyle = "#ff4444";
+                ctxTex.arc(scanX, height/2, 6, 0, Math.PI*2);
+                ctxTex.fill();
+                ctxTex.strokeStyle = "rgba(255,0,0,0.3)";
+                ctxTex.moveTo(0, height/2); ctxTex.lineTo(width, height/2);
+            } else if (modeData.type === "Radial") {
+                let cx = width / 2; let cy = height / 2;
+                let angle = (scanU * Math.PI * 2) - Math.PI;
+                ctxTex.moveTo(cx, cy);
+                ctxTex.lineTo(cx + Math.cos(angle)*width, cy + Math.sin(angle)*width);
+            }
+            ctxTex.stroke();
+
+            requestAnimationFrame(draw);
+        }
+
+        function drawGrid(ctx) {
+            ctx.strokeStyle = "#444";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let i=0; i<=10; i++) {
+                let pos = (i/10) * width;
+                ctx.moveTo(pos, 0); ctx.lineTo(pos, height);
+                ctx.moveTo(0, pos); ctx.lineTo(width, pos);
+            }
+            ctx.stroke();
+            ctx.fillStyle = "#888";
+            ctx.font = "10px monospace";
+            ctx.fillText("0", 5, height - 5); ctx.fillText("1", width - 10, height - 5);
+        }
+
+        // Init
+        setMode('linear');
+        draw();
+    </script>
+</body>
+</html>
