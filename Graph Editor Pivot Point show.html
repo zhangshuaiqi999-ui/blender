@@ -2,353 +2,481 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Blender 轴心点模式可视化</title>
+    <title>Blender 曲线编辑器全能模拟器</title>
     <style>
         body {
-            background-color: #1e1e1e;
-            color: #dcdcdc;
-            font-family: 'Segoe UI', sans-serif;
+            background-color: #181818;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             padding: 20px;
+            margin: 0;
         }
-        h2 { margin-bottom: 10px; color: #fff; }
+        h2 { margin-bottom: 5px; color: #fff; }
+        .subtitle { font-size: 0.9em; color: #aaa; margin-bottom: 20px; }
+        
+        /* 主容器 */
         .container {
-            position: relative;
             background-color: #2b2b2b;
             border: 1px solid #3d3d3d;
-            border-radius: 4px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+            box-sizing: border-box;
         }
+
+        /* 画布 */
         canvas {
+            background: #222;
+            border: 1px solid #111;
+            border-radius: 4px;
+            width: 100%;
+            height: 350px; /* 固定高度 */
             display: block;
-            cursor: crosshair;
+            margin-bottom: 20px;
+            cursor: default;
         }
-        .controls {
-            margin-top: 15px;
-            display: flex;
+
+        /* 控制区网格 */
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .panel {
             background: #333;
             padding: 15px;
-            border-radius: 8px;
-            align-items: center;
+            border-radius: 6px;
+            border: 1px solid #444;
         }
-        .mode-group {
+        
+        h4 { 
+            margin: 0 0 10px 0; 
+            padding-bottom: 5px;
+            border-bottom: 2px solid #eb7d00;
+            color: #fff;
+            display: inline-block;
+        }
+
+        /* 单选按钮组 */
+        .radio-group {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
         label {
-            cursor: pointer;
             display: flex;
             align-items: center;
-            font-size: 14px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: background 0.1s;
         }
+        label:hover { background: #444; }
         input[type="radio"] {
-            margin-right: 8px;
+            margin-right: 10px;
             accent-color: #eb7d00;
+            transform: scale(1.2);
         }
-        .slider-group {
+        /* 禁用状态样式 */
+        label.disabled { color: #555; cursor: not-allowed; }
+        label.disabled:hover { background: none; }
+
+        /* 滑块区域 */
+        .slider-section {
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 5px solid #eb7d00;
+        }
+        .slider-header {
             display: flex;
-            flex-direction: column;
-            gap: 5px;
-            width: 200px;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-weight: bold;
         }
         input[type="range"] {
             width: 100%;
             cursor: pointer;
-            accent-color: #4772b3;
+            accent-color: #eb7d00;
         }
-        .desc {
+
+        /* 说明文字 */
+        .description {
             margin-top: 15px;
             font-size: 14px;
-            color: #aaa;
-            max-width: 600px;
             line-height: 1.5;
-            background: #252525;
-            padding: 10px;
-            border-radius: 4px;
-            border-left: 4px solid #eb7d00;
+            color: #ccc;
         }
-        /* Blender UI Simulation */
-        .cursor-icon {
-            position: absolute;
-            pointer-events: none;
-            width: 20px;
-            height: 20px;
-            border: 1px dashed rgba(255,255,255,0.3);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-        }
-        .cursor-crosshair {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-        }
-        .cursor-crosshair::before, .cursor-crosshair::after {
-            content: '';
-            position: absolute;
-            background: #ff4444;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-        .cursor-crosshair::before { width: 14px; height: 1px; }
-        .cursor-crosshair::after { width: 1px; height: 14px; }
-        
-        strong { color: #eb7d00; }
+        .highlight { color: #eb7d00; font-weight: bold; }
+        .tip { font-style: italic; color: #888; margin-top: 5px; font-size: 0.9em;}
+
     </style>
 </head>
 <body>
 
-    <h2>Blender 曲线缩放模式模拟器</h2>
-    
+    <h2>Blender 曲线变换实验室</h2>
+    <div class="subtitle">全能版：缩放 (S) / 移动 (G) / 旋转 (R) + 三种轴心模式</div>
+
     <div class="container">
-        <canvas id="graphCanvas" width="600" height="300"></canvas>
-    </div>
+        <canvas id="canvas" width="800" height="350"></canvas>
 
-    <div class="controls">
-        <div class="mode-group">
-            <label><input type="radio" name="mode" value="bbox" checked> 1. 包围盒中心 (默认)</label>
-            <label><input type="radio" name="mode" value="cursor"> 2. 2D 游标 (定点缩放)</label>
-            <label><input type="radio" name="mode" value="individual"> 3. 各自中心 (Individual)</label>
+        <div class="controls-grid">
+            <div class="panel">
+                <h4>1. 选择操作 (Action)</h4>
+                <div class="radio-group">
+                    <label><input type="radio" name="action" value="scale" checked> 缩放 (Scale / S)</label>
+                    <label><input type="radio" name="action" value="rotate"> 旋转 (Rotate / R)</label>
+                    <label><input type="radio" name="action" value="move"> 移动 (Move / G)</label>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h4>2. 选择轴心 (Pivot Point)</h4>
+                <div class="radio-group" id="pivotGroup">
+                    <label id="lbl-bbox"><input type="radio" name="pivot" value="bbox" checked> 包围盒中心 (Bounding Box Center)</label>
+                    <label id="lbl-cursor"><input type="radio" name="pivot" value="cursor"> 2D 游标 (2D Cursor)</label>
+                    <label id="lbl-individual"><input type="radio" name="pivot" value="individual"> 各自中心 (Individual Centers)</label>
+                </div>
+            </div>
         </div>
 
-        <div class="slider-group">
-            <label for="scaleSlider">缩放力度 (Scale): <span id="scaleVal">1.0</span>x</label>
-            <input type="range" id="scaleSlider" min="0" max="2.5" step="0.01" value="1.0">
+        <div class="slider-section">
+            <div class="slider-header">
+                <span id="sliderLabel">缩放倍数:</span>
+                <span id="sliderVal" style="color:#eb7d00">1.00</span>
+            </div>
+            <input type="range" id="mainSlider" min="0" max="2.5" step="0.01" value="1.0">
+            
+            <div id="descText" class="description">
+                加载中...
+            </div>
         </div>
-    </div>
-
-    <div class="desc" id="description">
-        选中了 <strong>包围盒中心</strong>。这是默认模式。<br>
-        当你缩放时，所有关键帧会向<strong>整体的几何中心</strong>收缩。就像挤压弹簧一样。
     </div>
 
 <script>
-    const canvas = document.getElementById('graphCanvas');
+    const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const slider = document.getElementById('scaleSlider');
-    const scaleValText = document.getElementById('scaleVal');
-    const descText = document.getElementById('description');
-    const radios = document.getElementsByName('mode');
+    const slider = document.getElementById('mainSlider');
+    const sliderLabel = document.getElementById('sliderLabel');
+    const sliderVal = document.getElementById('sliderVal');
+    const descText = document.getElementById('descText');
+    const pivotLabels = {
+        bbox: document.getElementById('lbl-bbox'),
+        cursor: document.getElementById('lbl-cursor'),
+        individual: document.getElementById('lbl-individual')
+    };
 
-    // 原始数据：三个关键帧 [Time(x), Value(y)] (Blender坐标系)
-    // 我们会在绘制时映射到Canvas坐标
-    // 手柄相对位置：[-15, 0] 左手柄, [15, 0] 右手柄
-    const originalKeys = [
-        { x: 100, y: 100, lh: {x: -30, y: 0}, rh: {x: 30, y: 0} }, // 左
-        { x: 300, y: 200, lh: {x: -40, y: 0}, rh: {x: 40, y: 0} }, // 中
-        { x: 500, y: 100, lh: {x: -30, y: 0}, rh: {x: 30, y: 0} }  // 右
+    // 核心状态
+    let state = {
+        action: 'scale',     // scale, rotate, move
+        pivot: 'bbox',       // bbox, cursor, individual
+        value: 1.0           // slider value
+    };
+
+    // 2D 游标位置 (Blender 坐标系: 左下角为原点逻辑，但Canvas是左上角)
+    // 我们在绘制层做Y轴翻转，这里存储逻辑坐标
+    const CURSOR_POS = { x: 100, y: 100 }; 
+
+    // 原始关键帧数据 (逻辑坐标)
+    // 模拟一段“缓入缓出”的曲线
+    const BASE_KEYS = [
+        { x: 200, y: 150, lh: {x: -40, y: 0}, rh: {x: 40, y: 0} }, // Start
+        { x: 400, y: 250, lh: {x: -40, y: 0}, rh: {x: 40, y: 0} }, // Middle (Peak)
+        { x: 600, y: 150, lh: {x: -40, y: 0}, rh: {x: 40, y: 0} }  // End
     ];
 
-    // 2D 游标位置 (Blender坐标)
-    const cursor2D = { x: 50, y: 50 };
-
-    let currentMode = 'bbox';
-    let currentScale = 1.0;
-
-    // 计算包围盒中心
+    // 工具：计算包围盒中心
     function getBBoxCenter(keys) {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         keys.forEach(k => {
-            if (k.x < minX) minX = k.x;
-            if (k.x > maxX) maxX = k.x;
-            if (k.y < minY) minY = k.y;
-            if (k.y > maxY) maxY = k.y;
+            minX = Math.min(minX, k.x); maxX = Math.max(maxX, k.x);
+            minY = Math.min(minY, k.y); maxY = Math.max(maxY, k.y);
         });
-        return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+        return { x: (minX + maxX)/2, y: (minY + maxY)/2 };
     }
 
-    function draw() {
-        // 清空背景
-        ctx.fillStyle = "#2b2b2b";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 工具：旋转点
+    function rotatePoint(px, py, cx, cy, angleDeg) {
+        const rad = angleDeg * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = px - cx;
+        const dy = py - cy;
+        return {
+            x: cx + dx * cos - dy * sin,
+            y: cy + dx * sin + dy * cos
+        };
+    }
 
+    // 更新 UI 状态（禁用/启用逻辑）
+    function updateUIState() {
+        // 读取 Radio
+        document.getElementsByName('action').forEach(el => { if(el.checked) state.action = el.value; });
+        document.getElementsByName('pivot').forEach(el => { if(el.checked) state.pivot = el.value; });
+        state.value = parseFloat(slider.value);
+        sliderVal.innerText = state.value.toFixed(2);
+
+        // 特殊逻辑：Move 模式下，轴心点无效
+        const isMove = state.action === 'move';
+        for (let key in pivotLabels) {
+            if (isMove) {
+                pivotLabels[key].classList.add('disabled');
+                pivotLabels[key].querySelector('input').disabled = true;
+            } else {
+                pivotLabels[key].classList.remove('disabled');
+                pivotLabels[key].querySelector('input').disabled = false;
+            }
+        }
+
+        // 更新文本和滑块范围
+        updateDescription(isMove);
+    }
+
+    function updateDescription(isMove) {
+        let txt = "";
+        
+        if (state.action === 'scale') {
+            sliderLabel.innerText = "缩放系数:";
+            if (state.pivot === 'bbox') {
+                txt = "<strong>【包围盒中心 + 缩放】</strong><br>所有关键帧向整体中心靠拢。<br><span class='highlight'>用途：</span>整体调整动画的幅度或快慢（但不保证起始点位置）。";
+            } else if (state.pivot === 'cursor') {
+                txt = "<strong>【2D 游标 + 缩放】</strong><br>所有关键帧向红色游标靠拢。<br><span class='highlight'>用途：</span>如果你把游标放在第0帧，这是调整动画速度且<span class='highlight'>不改变起始时间</span>的最佳方法！";
+            } else if (state.pivot === 'individual') {
+                txt = "<strong>【各自中心 + 缩放】</strong><br>注意看：<strong>关键帧(橙色方块)没有动！</strong>只有红色手柄变长了。<br><span class='highlight'>用途：</span>想让动画曲线更夸张（S型更明显），但不想改变时间点时使用。";
+            }
+        } 
+        else if (state.action === 'rotate') {
+            sliderLabel.innerText = "旋转角度:";
+            if (state.pivot === 'bbox') {
+                txt = "<strong>【包围盒中心 + 旋转】</strong><br>整体绕中心旋转。<br><span class='highlight'>用途：</span>较少用于调节节奏，多用于特殊图形构造。";
+            } else if (state.pivot === 'cursor') {
+                txt = "<strong>【2D 游标 + 旋转】</strong><br>整体绕游标旋转。<br><span class='highlight'>用途：</span>创造线性的数值倾斜（比如让物体匀速上升的同时带有波动）。";
+            } else if (state.pivot === 'individual') {
+                txt = "<strong>【各自中心 + 旋转】</strong><br>注意看：<strong>关键帧没有动！</strong>它们只是原地“扭”了一下手柄。<br><span class='highlight'>用途：</span>这是调节<span class='highlight'>入场/出场缓急（Ease-in/out）</span>的神技。坡度变平=刹车变慢；坡度变陡=加速变快。";
+            }
+        } 
+        else if (state.action === 'move') {
+            sliderLabel.innerText = "移动距离:";
+            txt = "<strong>【移动 (Grab)】</strong><br><span class='highlight'>注意：Blender 中移动操作不受轴心点影响！</span><br>无论你选什么轴心，G 键总是整体平移。<br>左右拖动 = 改变发生的时间；上下拖动 = 改变数值大小。";
+        }
+
+        descText.innerHTML = txt;
+    }
+
+    // 绘制逻辑
+    function draw() {
+        // 清空
+        ctx.fillStyle = "#222";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         // 绘制网格
-        ctx.strokeStyle = "#393939";
+        drawGrid();
+
+        // 确定 Pivot 坐标
+        let pivot = {x:0, y:0};
+        const bbox = getBBoxCenter(BASE_KEYS);
+        
+        if (state.pivot === 'bbox') pivot = bbox;
+        else if (state.pivot === 'cursor') pivot = CURSOR_POS;
+        // individual 不需要单一 pivot
+
+        // 计算变换后的点
+        let transformedKeys = BASE_KEYS.map(k => {
+            let newK = JSON.parse(JSON.stringify(k)); // Deep copy
+
+            // --- 移动 (Move) ---
+            if (state.action === 'move') {
+                // Move 忽略 Pivot，直接加 Offset
+                // 模拟 G -> X (时间平移)
+                newK.x += state.value; 
+                // 手柄随之移动
+                // (Y轴我们暂不演示，专注演示X轴时间平移)
+            } 
+            
+            // --- 缩放 (Scale) ---
+            else if (state.action === 'scale') {
+                const s = state.value;
+                if (state.pivot === 'individual') {
+                    // 各自中心：只缩放手柄向量
+                    newK.lh.x *= s; newK.lh.y *= s;
+                    newK.rh.x *= s; newK.rh.y *= s;
+                } else {
+                    // 绕 Pivot 缩放位置
+                    newK.x = pivot.x + (k.x - pivot.x) * s;
+                    newK.y = pivot.y + (k.y - pivot.y) * s;
+                    // 手柄长度也要缩放以保持形状
+                    newK.lh.x *= s; newK.lh.y *= s;
+                    newK.rh.x *= s; newK.rh.y *= s;
+                }
+            }
+            
+            // --- 旋转 (Rotate) ---
+            else if (state.action === 'rotate') {
+                const r = state.value;
+                if (state.pivot === 'individual') {
+                    // 各自中心：只旋转手柄向量
+                    // 必须把手柄向量当做点旋转
+                    let newL = rotatePoint(k.lh.x, k.lh.y, 0, 0, r);
+                    let newR = rotatePoint(k.rh.x, k.rh.y, 0, 0, r);
+                    newK.lh = newL;
+                    newK.rh = newR;
+                } else {
+                    // 绕 Pivot 旋转位置
+                    let pRot = rotatePoint(k.x, k.y, pivot.x, pivot.y, r);
+                    newK.x = pRot.x; newK.y = pRot.y;
+                    // 手柄向量也要旋转
+                    let newL = rotatePoint(k.lh.x, k.lh.y, 0, 0, r);
+                    let newR = rotatePoint(k.rh.x, k.rh.y, 0, 0, r);
+                    newK.lh = newL;
+                    newK.rh = newR;
+                }
+            }
+
+            return newK;
+        });
+
+        // 绘制辅助线 (Pivot) - Move模式下不绘制Pivot因为无效
+        if (state.action !== 'move') {
+            if (state.pivot === 'cursor') drawPivot(CURSOR_POS, "2D 游标", "#ff4444");
+            if (state.pivot === 'bbox') drawPivot(bbox, "包围盒中心", "#ffffff");
+        }
+
+        // 绘制曲线
+        drawCurve(transformedKeys);
+    }
+
+    function toCanvasY(y) {
+        return canvas.height - y; // 翻转Y轴
+    }
+
+    function drawGrid() {
+        ctx.strokeStyle = "#333";
         ctx.lineWidth = 1;
         ctx.beginPath();
         for(let i=0; i<canvas.width; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); }
         for(let i=0; i<canvas.height; i+=50) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
         ctx.stroke();
-
-        // 绘制坐标轴 (模拟Blender时间线)
-        ctx.strokeStyle = "#111";
-        ctx.beginPath();
-        ctx.moveTo(0, canvas.height - 50);
-        ctx.lineTo(canvas.width, canvas.height - 50);
-        ctx.stroke();
-
-        // 计算变换后的关键帧
-        let transformedKeys = [];
-        const bboxCenter = getBBoxCenter(originalKeys);
-
-        originalKeys.forEach(k => {
-            let newX = k.x;
-            let newY = k.y;
-            // 关键帧手柄 (Handle) 的世界坐标
-            let hLx = k.x + k.lh.x;
-            let hLy = k.y + k.lh.y;
-            let hRx = k.x + k.rh.x;
-            let hRy = k.y + k.rh.y;
-
-            if (currentMode === 'bbox') {
-                // 1. 包围盒模式：所有点绕 整体中心 缩放
-                newX = bboxCenter.x + (k.x - bboxCenter.x) * currentScale;
-                newY = bboxCenter.y + (k.y - bboxCenter.y) * currentScale;
-                
-                // 手柄也跟随整体缩放
-                hLx = bboxCenter.x + (hLx - bboxCenter.x) * currentScale;
-                hLy = bboxCenter.y + (hLy - bboxCenter.y) * currentScale;
-                hRx = bboxCenter.x + (hRx - bboxCenter.x) * currentScale;
-                hRy = bboxCenter.y + (hRy - bboxCenter.y) * currentScale;
-
-            } else if (currentMode === 'cursor') {
-                // 2. 游标模式：所有点绕 2D Cursor 缩放
-                newX = cursor2D.x + (k.x - cursor2D.x) * currentScale;
-                newY = cursor2D.y + (k.y - cursor2D.y) * currentScale;
-                
-                hLx = cursor2D.x + (hLx - cursor2D.x) * currentScale;
-                hLy = cursor2D.y + (hLy - cursor2D.y) * currentScale;
-                hRx = cursor2D.x + (hRx - cursor2D.x) * currentScale;
-                hRy = cursor2D.y + (hRy - cursor2D.y) * currentScale;
-
-            } else if (currentMode === 'individual') {
-                // 3. 各自中心：关键帧位置不变！只有手柄绕着关键帧缩放
-                newX = k.x;
-                newY = k.y;
-
-                // 手柄向量缩放
-                hLx = newX + (k.lh.x * currentScale);
-                hLy = newY + (k.lh.y * currentScale);
-                hRx = newX + (k.rh.x * currentScale);
-                hRy = newY + (k.rh.y * currentScale);
-            }
-
-            transformedKeys.push({
-                x: newX, y: newY, 
-                hl: {x: hLx, y: hLy},
-                hr: {x: hRx, y: hRy}
-            });
-        });
-
-        // 绘制 2D Cursor (仅在Cursor模式下高亮，但一直显示位置)
-        drawCursor(cursor2D.x, canvas.height - cursor2D.y, currentMode === 'cursor');
         
-        // 绘制 BBox Center (仅在BBox模式下高亮)
-        if (currentMode === 'bbox') {
-             drawPivot(bboxCenter.x, canvas.height - bboxCenter.y);
-        }
-
-        // 绘制曲线连接
-        ctx.beginPath();
-        ctx.strokeStyle = "#aaa";
+        // 地面线
+        ctx.strokeStyle = "#111";
         ctx.lineWidth = 2;
-        // 简单模拟贝塞尔曲线视觉 (用直线连接关键帧方便理解位移)
-        ctx.moveTo(transformedKeys[0].x, canvas.height - transformedKeys[0].y);
-        for (let i = 0; i < transformedKeys.length - 1; i++) {
-             // 简单的三次贝塞尔模拟
-             let p0 = transformedKeys[i];
-             let p1 = transformedKeys[i+1];
-             ctx.bezierCurveTo(
-                 p0.hr.x, canvas.height - p0.hr.y,
-                 p1.hl.x, canvas.height - p1.hl.y,
-                 p1.x, canvas.height - p1.y
-             );
-        }
+        ctx.beginPath();
+        ctx.moveTo(0, toCanvasY(0)); ctx.lineTo(canvas.width, toCanvasY(0));
         ctx.stroke();
-
-        // 绘制关键帧和手柄
-        transformedKeys.forEach(k => {
-            let cy = canvas.height - k.y;
-            let hly = canvas.height - k.hl.y;
-            let hry = canvas.height - k.hr.y;
-
-            // 手柄杆
-            ctx.beginPath();
-            ctx.strokeStyle = "#666";
-            ctx.lineWidth = 1;
-            ctx.moveTo(k.hl.x, hly);
-            ctx.lineTo(k.x, cy);
-            ctx.lineTo(k.hr.x, hry);
-            ctx.stroke();
-
-            // 手柄点
-            ctx.fillStyle = "#da5c5c"; // 红色手柄
-            ctx.beginPath(); ctx.arc(k.hl.x, hly, 3, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(k.hr.x, hry, 3, 0, Math.PI*2); ctx.fill();
-
-            // 关键帧点 (橙色=选中)
-            ctx.fillStyle = "#eb7d00";
-            ctx.fillRect(k.x - 4, cy - 4, 8, 8);
-            ctx.strokeStyle = "#fff"; // 选中高亮边框
-            ctx.strokeRect(k.x - 4, cy - 4, 8, 8);
-        });
     }
 
-    function drawCursor(x, y, active) {
-        ctx.strokeStyle = active ? "#ff4444" : "#555";
-        ctx.lineWidth = 2;
-        const size = 10;
+    function drawPivot(pos, label, color) {
+        const cx = pos.x;
+        const cy = toCanvasY(pos.y);
+        ctx.strokeStyle = color;
+        ctx.setLineDash([4, 2]);
+        ctx.lineWidth = 1;
+        
+        // 十字准星
         ctx.beginPath();
-        // Crosshair
-        ctx.moveTo(x - size, y); ctx.lineTo(x + size, y);
-        ctx.moveTo(x, y - size); ctx.lineTo(x, y + size);
+        ctx.moveTo(cx-15, cy); ctx.lineTo(cx+15, cy);
+        ctx.moveTo(cx, cy-15); ctx.lineTo(cx, cy+15);
         ctx.stroke();
-        // Circle
+        
+        // 圆圈
         ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI*2);
-        ctx.setLineDash([2, 2]);
+        ctx.arc(cx, cy, 10, 0, Math.PI*2);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        if(active) {
-            ctx.fillStyle = "#fff";
-            ctx.font = "12px Arial";
-            ctx.fillText("2D Cursor", x + 15, y);
-        }
+        ctx.fillStyle = color;
+        ctx.font = "12px Arial";
+        ctx.fillText(label, cx + 15, cy - 15);
     }
 
-    function drawPivot(x, y) {
-        ctx.fillStyle = "#fff";
+    function drawCurve(keys) {
+        // 连线
+        ctx.strokeStyle = "#eb7d00"; // Blender 橙
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI*2);
-        ctx.fill();
-        ctx.font = "12px Arial";
-        ctx.fillStyle = "#aaa";
-        ctx.fillText("Center", x - 20, y - 10);
+        ctx.moveTo(keys[0].x, toCanvasY(keys[0].y));
+
+        for (let i = 0; i < keys.length - 1; i++) {
+            const p0 = keys[i];
+            const p1 = keys[i+1];
+            
+            // 贝塞尔控制点 (绝对坐标)
+            const cp1x = p0.x + p0.rh.x;
+            const cp1y = toCanvasY(p0.y + p0.rh.y);
+            const cp2x = p1.x + p1.lh.x;
+            const cp2y = toCanvasY(p1.y + p1.lh.y);
+            const endX = p1.x;
+            const endY = toCanvasY(p1.y);
+
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
+        }
+        ctx.stroke();
+
+        // 绘制关键帧点和手柄
+        keys.forEach(k => {
+            const kx = k.x;
+            const ky = toCanvasY(k.y);
+            
+            // 左手柄
+            const lhx = kx + k.lh.x;
+            const lhy = toCanvasY(k.y + k.lh.y);
+            // 右手柄
+            const rhx = kx + k.rh.x;
+            const rhy = toCanvasY(k.y + k.rh.y);
+
+            // 杆
+            ctx.strokeStyle = "#666";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(lhx, lhy); ctx.lineTo(rhx, rhy);
+            ctx.stroke();
+
+            // 手柄头 (红)
+            ctx.fillStyle = "#da5c5c";
+            ctx.beginPath(); ctx.arc(lhx, lhy, 3, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(rhx, rhy, 3, 0, Math.PI*2); ctx.fill();
+
+            // 关键帧 (橙)
+            ctx.fillStyle = "#eb7d00";
+            ctx.fillRect(kx - 5, ky - 5, 10, 10);
+            ctx.strokeStyle = "white";
+            ctx.strokeRect(kx - 5, ky - 5, 10, 10);
+        });
     }
 
     // 事件监听
-    slider.addEventListener('input', (e) => {
-        currentScale = parseFloat(e.target.value);
-        scaleValText.textContent = currentScale.toFixed(2);
-        draw();
-    });
-
-    radios.forEach(r => {
+    document.querySelectorAll('input[type=radio]').forEach(r => {
         r.addEventListener('change', (e) => {
-            currentMode = e.target.value;
-            // 重置滑块以方便观察
-            slider.value = 1.0;
-            currentScale = 1.0;
-            scaleValText.textContent = "1.0";
+            // 切换Action时重置滑块范围和默认值
+            const action = document.querySelector('input[name="action"]:checked').value;
             
-            // 更新描述
-            if (currentMode === 'bbox') {
-                descText.innerHTML = "选中了 <strong>包围盒中心</strong>。<br>注意看：关键帧向它们<strong>中间的那个点</strong>（Center）靠拢。这是调整整体幅度的首选。";
-            } else if (currentMode === 'cursor') {
-                descText.innerHTML = "选中了 <strong>2D 游标</strong>（左下角红十字）。<br>注意看：最左边的点也会移动！所有点都向游标靠拢。<br><strong>技巧：</strong> 把游标放在第0帧，用这个模式缩放，动画变快了但依然从0开始。";
-            } else if (currentMode === 'individual') {
-                descText.innerHTML = "选中了 <strong>各自中心</strong>。<br>注意看：<strong>橙色方块（关键帧）完全不动！</strong><br>只有红色的手柄在伸缩。这用于调整曲线的平滑度，而不改变时间点。";
+            if (action === 'scale') {
+                slider.min = 0; slider.max = 2.0; slider.step = 0.01; slider.value = 1.0;
+            } else if (action === 'rotate') {
+                slider.min = -45; slider.max = 45; slider.step = 1; slider.value = 0;
+            } else if (action === 'move') {
+                slider.min = -150; slider.max = 150; slider.step = 1; slider.value = 0;
             }
+            
+            updateUIState();
             draw();
         });
     });
 
-    // 初始绘制
+    slider.addEventListener('input', () => {
+        updateUIState();
+        draw();
+    });
+
+    // 初始化
+    updateUIState();
     draw();
 
 </script>
